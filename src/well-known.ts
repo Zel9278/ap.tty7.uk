@@ -55,4 +55,18 @@ wellKnown.get("/host-meta", (c) => {
     return c.text(hostMeta, 200, { "Content-Type": "application/xrd+xml" })
 })
 
+wellKnown.get("/host-meta.json", (c) => {
+    const hostMeta = {
+        links: [
+            {
+                rel: "lrdd",
+                type: "application/jrd+xml",
+                template: "https://ap.tty7.uk/webfinger?resource={uri}",
+            },
+        ],
+    }
+
+    return c.json(hostMeta)
+})
+
 export default wellKnown

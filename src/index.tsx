@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server"
 import { serveStatic } from "@hono/node-server/serve-static"
-import { Hono } from "hono"
+import { Hono, MiddlewareHandler } from "hono"
 import { setCookie, getCookie, deleteCookie } from "hono/cookie"
 import { poweredBy } from "hono/powered-by"
 import { eq, or } from "drizzle-orm"
@@ -8,26 +8,32 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator"
 import { drizzle, BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import SQLite3 from "better-sqlite3"
 import bcrypt from "bcrypt"
+import path from "path"
 
 import actor from "./actor"
 import accepts from "./accepts"
 import wellKnown from "./well-known"
 import nodeInfo from "./node-info"
 import me from "./me"
+import api from "./api"
 import { Users } from "./database/tables"
 import manifest from "./manifest"
+import { inboxHandler } from "./inbox"
 
 import { renderer } from "./frontend/renderer"
 import Home from "./frontend/home"
 import Login from "./frontend/login"
-import path from "path"
 import { Logined } from "./frontend/logined"
 
 const PORT = 7634
 
 const app = new Hono()
 const sqlite = new SQLite3("./src/data/database.db")
+const inMemorySQLite = new SQLite3(":memory:")
 const db: BetterSQLite3Database = drizzle(sqlite)
+const inMemoryDB: BetterSQLite3Database = drizzle(inMemorySQLite)
+
+export { db as database, inMemoryDB as inMemoryDatabase }
 
 /* db migration test */
 
@@ -36,8 +42,6 @@ migrate(db, {
 })
 
 /* db migration test end */
-
-export const database = db
 
 app.use(poweredBy())
 app.use("*", async (c, next) => {
@@ -63,7 +67,8 @@ app.use("/resources/*", serveStatic(staticOptions))
 app.use("/favicon.ico", serveStatic(staticOptions))
 
 app.route("/.well-known", wellKnown)
-app.route("/nodeInfo", nodeInfo)
+app.route("/nodeinfo", nodeInfo)
+app.route("/api", api)
 app.route("/me", me)
 
 app.get("/", async (c) => {
@@ -217,8 +222,16 @@ app.get("/actor", async (c) => {
     })
 })
 
-app.post("/inbox", async (c) => {
-    return c.text("OK")
+app.post("/inbox", inboxHandler)
+
+app.get("/authorize-follow", async (c) => {
+    const uri = c.req.query("acct")
+
+    if (!uri) {
+        return c.text("Bad Request", 400)
+    }
+
+    return c.text(`OK ${uri}`)
 })
 
 app.get("/manifest.json", async (c) => {
